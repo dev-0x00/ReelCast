@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Video Clips</title>
+    <style>
+    .highlight {
+        background-color: yellow;
+    }
+
+    .clipped-video {
+        width: 100%;
+        height: auto;
+    }
+    .clips-row {
+        display: flex;
+        flex-wrap: wrap;
+        margin-bottom: 20px;
+    }
+    .single-clip {
+        margin-right: 10px;
+        flex: 1;
+    }
+    .clip-info {
+        padding-left: 20px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        flex: 1;
+    }
+    .clip-title {
+        font-weight: bold;
+        font-size: 1.2em;
+        margin-bottom: 5px;
+    }
+    .clip-tags {
+        margin-bottom: 5px;
+    }
+    .clip-duration,
+    .clip-total-words {
+        font-size: 0.9em;
+        color: #777;
+        margin-bottom: 5px;
+    }
+    .clip-segments {
+        margin-bottom: 10px;
+    }
+    .transcript-container {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+</style>
+
+</head>
+<body>
+<link href="https://vjs.zencdn.net/7.14.3/video-js.css" rel="stylesheet">
+<script src="https://vjs.zencdn.net/7.14.3/video.min.js"></script>
+
+{% load static %}
+{% block content %}
+  <h1>{{ video.human_readable_title }}</h1>
+  <div class="transcript-container">
+    {% for word_dict in json_transcript %}
+        <span class="word" data-word-id="{{ word_dict.word_id }}" data-start-time="{{ word_dict.start_time }}" data-end-time="{{ word_dict.end_time }}">
+            {{ word_dict.word }}
+        </span>
+    {% endfor %}
+  </div>
+{% endblock %}
+
+<p>Selected Word IDs: <span id="selected-word-ids"></span>
+<p id="selected-duration"></p>
+<p id="start-time"></p>
+<p id="end-time"></p>
+
+<button id="clear-highlights-btn">Clear Highlights</button>
+<button id="clip-button">Clip Video</button>
+
+<div>
+    <div>
+        <div id="clip-container"></div>
+    </div>
+</div>
+
+<!-- Add this section to display clips -->
+<div id="clip-display-container">
+    {% for clip in clips %}
+        <div class="clips-row">
+            <div class="single-clip">
+                <video class="clipped-video" controls>
+                    <source src="{{ clip.clip_file.url }}" type="video/mp4">
+                </video>
+            </div>
+            <div class="clip-info">
+                <div class="clip-title">{{ clip.title }}</div>
+                <div class="clip-tags">{{ clip.tags }}</div>
+                <div class="clip-duration">Duration: {{ clip.duration }} seconds</div>
+                <div class="clip-total-words">Total words: {{ clip.total_words }}</div>
+                <div class="clip-segments">
+                    {% for segment in clip.segments.splitlines %}
+                        <p>{{ segment }}</p>
+                    {% endfor %}
+      </div>
+        </div>
+    </div>
+{% endfor %}
+</div>s
+<script>
+
+var startWordId;
+var endWordId;
+var startWordStartTime
+var endWordEndTime
+// Function to clear previous highlights
+function clearHighlights() {
+    const highlightedWords = document.querySelectorAll('.word.highlight');
+    highlightedWords.forEach(word => {
+        word.classList.remove('highlight');
+    });
+}
+
+// Add a click event listener to the clear highlights button
+document.getElementById('clear-highlights-btn').addEventListener('click', () => {
+    clearHighlights();
+    document.getElementById('selected-word-ids').textContent = '';
+    document.getElementById('selected-duration').textContent = '';
+});
+
+const videoPlayer = document.getElementById('video-player');
+
+function playVideoClip(start, end) {
+    // Play the video clip
+    videoPlayer.currentTime = start;
+    videoPlayer.play();
+
+    // Stop the video when the end time is reached
+    videoPlayer.addEventListener('timeupdate', () => {
+        if (videoPlayer.currentTime >= end) {
+            videoPlayer.pause();
+        }
+    });
+}
+
+document.addEventListener('selectionchange', () => {
+    const selection = window.getSelection();
+    if (selection.isCollapsed) {
+        // Do not clear highlights or the display when the selection is empty
+        return;
+    } else {
+        // Get the range of the selection
+        const range = selection.getRangeAt(0);
+
+        // Get the start and end nodes of the selection
+        const startNode = range.startContainer;
+        const endNode = range.endContainer;
+
+        // Find the nearest .word elements
+        var startWord = startNode.parentElement.closest('.word');
+        var endWord = endNode.parentElement.closest('.word');
+
+        // Get the word IDs, start_time and end_time from the data-* attributes
+        startWordId = startWord ? parseInt(startWord.getAttribute('data-word-id')) : null;
+        endWordId = endWord ? parseInt(endWord.getAttribute('data-word-id')) : null;
+        startWordStartTime = startWord ? parseFloat(startWord.getAttribute('data-start-time')) : null;
+        endWordEndTime = endWord ? parseFloat(endWord.getAttribute('data-end-time')) : null;
+
+        // Display the selected word IDs and calculate the duration
+        if (startWordId !== null && endWordId !== null) {
+            document.getElementById('selected-word-ids').textContent = `${startWordId} - ${endWordId}`;
+            const duration = endWordEndTime - startWordStartTime;
+            document.getElementById('selected-duration').textContent = `Duration: ${duration.toFixed(2)} seconds`;
+            document.getElementById('start-time').textContent = `Start: ${startWordStartTime.toFixed(2)} seconds`;
+            document.getElementById('end-time').textContent = `End: ${endWordEndTime.toFixed(2)} seconds`;
+
+            // Clear previous highlights
+            clearHighlights();
+
+            // Highlight the selected words
+            const words = document.querySelectorAll('.word');
+            words.forEach(word => {
+                const wordId = parseInt(word.getAttribute('data-word-id'));
+                if (wordId >= startWordId && wordId <= endWordId) {
+                    word.classList.add('highlight');
+                }
+            });
+
+            // Play the video clip when it's ready
+            videoPlayer.addEventListener('canplaythrough', () => {
+                playVideoClip(startWordStartTime, endWordEndTime);
+            });
+        }
+    }
+});
+</script>
+
+{% load static %}
+<script>
+    var clipButton = document.getElementById('clip-button');
+
+    clipButton.addEventListener('click', function() {
+
+        fetch('/video/clip_video/' + startWordStartTime + '/' + endWordEndTime + '/{{ video.id }}/')
+            .then(function(response) {
+                if (response.ok) {
+                    return response.json();
+                } else {
+                    console.log('Error creating video clip');
+                }
+            })
+            .then(function(data) {
+                console.log('Data received:', data); // Add this line to debug
+                var clipContainer = document.getElementById('clip-container');
+                var clipUrl = "{% static '' %}" + data.clip_url;
+                console.log('Clip URL:', clipUrl); // Add this line to debug
+                var videoElement = document.createElement('video');
+                videoElement.setAttribute('controls', '');
+                videoElement.setAttribute('class', 'clipped-video'); // Add this line
+                var sourceElement = document.createElement('source');
+                sourceElement.setAttribute('src', clipUrl);
+                sourceElement.setAttribute('type', 'video/mp4');
+                videoElement.appendChild(sourceElement);
+                clipContainer.appendChild(videoElement);
+            })
+            .catch(function(error) {
+                console.log('Error creating video clip:', error);
+            });
+    });
+
+</script>
+
+
+</body>
+</html>
